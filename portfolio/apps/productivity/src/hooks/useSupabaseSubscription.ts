@@ -1,46 +1,68 @@
-import { useEffect } from 'react'
 import { supabase } from "@/lib/supabase";
+import type {
+    RealtimePostgresChangesPayload,
+    RealtimePostgresChangesFilter,
+} from '@supabase/supabase-js'
 
-export function useScopedSubscription<T>(
-    createName: () => string,
-    createFilter: (deps: T) => any,
-    deps: T,
-    onChange: (payload: any) => void
+export function createScopedSubscription<
+    TDeps,
+    TRow extends Record<string, any> = Record<string, any>
+>(
+    createName: (deps: TDeps) => string,
+    createFilter: (
+        deps: TDeps
+    ) => RealtimePostgresChangesFilter<'INSERT' | 'UPDATE' | 'DELETE' | '*'>,
+    initialDeps: TDeps | null,
+    onChange: (payload: RealtimePostgresChangesPayload<TRow>) => void
 ) {
-    useEffect(() => {
-        const sub = createScopedSubscription(createName, createFilter, deps, onChange)
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    let currentDeps: TDeps | null = initialDeps
 
-        return () => sub.dispose()
-    }, [JSON.stringify(deps)]) // re-sub when deps change
-}
-
-export function createScopedSubscription<T>(
-    createName: () => string,
-    createFilter: (deps: T) => {
-        event: string
-        schema: string
-        table: string
-        filter?: string
-    },
-    initialDeps: T,
-    onChange: (payload: any) => void
-) {
-    let channel: any
-
-    function subscribe(deps: T) {
+    function subscribe(deps: TDeps) {
         if (channel) channel.unsubscribe()
 
         channel = supabase
-            .channel(createName())
+            .channel(createName(deps))
             .on('postgres_changes' as any, createFilter(deps), onChange)
             .subscribe()
     }
 
-    // Initialize
-    subscribe(initialDeps)
+    supabase.auth.onAuthStateChange((event, session) => {
+        if (session?.access_token) {
+            supabase.realtime.setAuth(session.access_token)
+
+            if (currentDeps) {
+                subscribe(currentDeps)
+            }
+        }
+
+        if (event === "SIGNED_OUT") {
+            channel?.unsubscribe()
+            channel = null
+        }
+    })
+
+    // Initialize immediately if we already have a session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.access_token && currentDeps) {
+            supabase.realtime.setAuth(session.access_token)
+            subscribe(currentDeps)
+        }
+    })
 
     return {
-        rescope: (deps: T) => subscribe(deps),
-        dispose: () => channel?.unsubscribe()
+        rescope: (deps: TDeps | null) => {
+            currentDeps = deps
+            if (deps) {
+                subscribe(deps)
+            } else {
+                channel?.unsubscribe()
+                channel = null
+            }
+        },
+        dispose: () => {
+            channel?.unsubscribe()
+            channel = null
+        },
     }
 }

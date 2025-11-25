@@ -1,0 +1,8 @@
+@utility grid-areas-* {
+    /* allow arbitrary value in [] to be used directly */
+    grid-template-areas: --value([*]);
+}
+
+@utility grid-area-* {
+    grid-area: --value([*]);
+}

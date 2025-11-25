@@ -8,7 +8,6 @@ import {
     SelectContent,
     SelectGroup,
     SelectItem,
-    SelectLabel,
     SelectTrigger,
     SelectValue
 } from "@/components/ui/select";
@@ -23,6 +22,8 @@ export function CardViewModal() {
     const selectedBoard = useStore(activeBoardStore)
 
     const columns = selectedBoard && getColumns(selectedBoard) || [];
+
+    if (!columns.length) return (<>Loading columns...</>)
 
     return (
         <Dialog open={!!card} onOpenChange={()=>modal.close()}>

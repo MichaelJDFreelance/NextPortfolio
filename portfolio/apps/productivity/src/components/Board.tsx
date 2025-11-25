@@ -1,11 +1,14 @@
-import React, {createContext, CSSProperties, useEffect} from "react";
+import React, {createContext, CSSProperties, ReactNode} from "react";
 import {
     DndContext,
     closestCenter,
     useSensor,
     useSensors,
     PointerSensor,
-    DragOverlay, useDroppable, CollisionDetection, pointerWithin,
+    DragOverlay,
+    useDroppable,
+    CollisionDetection,
+    pointerWithin,
 } from "@dnd-kit/core";
 import {
     SortableContext,
@@ -15,10 +18,9 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { horizontalListSortingStrategy } from "@dnd-kit/sortable";
 
-// utils/cn.ts
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import {useBoard} from "@/hooks/useBoard";
+import {BoardUpdateAction, NewColumnDef, PathToString, useBoard} from "@/hooks/useBoard";
 
 export function cn(...inputs: any[]) {
     return twMerge(clsx(inputs));
@@ -30,26 +32,22 @@ type CardProps<T> = {
     showAnyway?: boolean;
     render: (item: T) => React.ReactNode;
     classNames?: BoardClassNames;
-}
+};
 
 export const ColumnContext = createContext<ColumnProps<any> | null>(null);
 export const CardContext = createContext<CardProps<any> | null>(null);
 
-function Card<T extends {id:string}>({
-                     item,
-                     activeId,
-                     showAnyway = false,
-                     render, classNames
-                 }: CardProps<T>) {
+function Card<T extends { id: string }>({
+                                            item,
+                                            activeId,
+                                            showAnyway = false,
+                                            render,
+                                            classNames,
+                                        }: CardProps<T>) {
     const id = item?.id;
 
-    const {
-        setNodeRef,
-        transform,
-        transition,
-        attributes,
-        listeners,
-    } = useSortable({ id });
+    const { setNodeRef, transform, transition, attributes, listeners } =
+        useSortable({ id });
 
     const style: CSSProperties = {
         transform: CSS.Transform.toString(transform),
@@ -59,71 +57,95 @@ function Card<T extends {id:string}>({
     };
 
     return (
-        <CardContext.Provider value={{
-            item,
-            activeId,
-            showAnyway,
-            render,
-        }}>
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners}
-             className={cn(
-                 "rounded-lg bg-white shadow-sm p-3 mb-2 cursor-grab transition-opacity", classNames?.card
-             )}>
-            {render(item)}
-        </div>
+        <CardContext.Provider
+            value={{
+                item,
+                activeId,
+                showAnyway,
+                render,
+            }}
+        >
+            <div
+                ref={setNodeRef}
+                style={style}
+                {...attributes}
+                {...listeners}
+                className={cn(
+                    "rounded-lg bg-white shadow-sm p-3 mb-2 cursor-grab transition-opacity",
+                    classNames?.card
+                )}
+            >
+                {render(item)}
+            </div>
         </CardContext.Provider>
     );
 }
 
-type ColumnProps<T> = {
+type ColumnProps<TItem> = {
     id: string;
     title: string;
-    items: T[];
-    activeCard: { id:string } | null;
-    renderCard: (item: T) => React.ReactNode;
+    items: TItem[];
+    activeCard: { id: string } | null;
+    renderCard: (item: TItem) => React.ReactNode;
     classNames?: BoardClassNames;
     style: CSSProperties;
     isPreviewColumn?: boolean;
-}
+};
 
-function Column<T extends {id:string}>({
-                       id,
-                       title,
-                       items,
-                       activeCard,
-                       renderCard, classNames, style, isPreviewColumn
-                   }: ColumnProps<T>) {
+function Column<TItem>({
+                           id,
+                           title,
+                           items,
+                           activeCard,
+                           renderCard,
+                           classNames,
+                           style,
+                           isPreviewColumn,
+                       }: ColumnProps<TItem>) {
     const { setNodeRef } = useDroppable({ id });
 
-
     return (
-        <ColumnContext.Provider value={{
-            id,
-            title,
-            items,
-            activeCard,
-            renderCard,
-            style
-        }}>
+        <ColumnContext.Provider
+            value={{
+                id,
+                title,
+                items,
+                activeCard,
+                renderCard,
+                style,
+            }}
+        >
             <div
                 ref={setNodeRef}
                 className={cn(
-                    "bg-muted p-4 rounded-xl w-64 flex flex-col", classNames?.column
-                )} style={style as any}
+                    "bg-muted p-4 rounded-xl w-64 flex flex-col",
+                    classNames?.column
+                )}
+                style={style as CSSProperties}
             >
-                <h3 className={cn("text-sm font-semibold text-muted-foreground mb-2",
-                    classNames?.columnTitle
-                )}>{title} {isPreviewColumn && "Preview"}</h3>
-                <SortableContext items={items.map((item)=>item.id)} strategy={verticalListSortingStrategy}>
-                    {items.map((item) => (
-                        <Card
-                            key={item.id}
-                            item={item}
-                            activeId={activeCard?.id || ""}
-                            render={renderCard}
-                            classNames={classNames}
-                        />
-                    ))}
+                <h3
+                    className={cn(
+                        "text-sm font-semibold text-muted-foreground mb-2",
+                        classNames?.columnTitle
+                    )}
+                >
+                    {title} {isPreviewColumn && "Preview"}
+                </h3>
+                <SortableContext
+                    items={items.map((item: any) => item.id)}
+                    strategy={verticalListSortingStrategy}
+                >
+                    {(items as any[])
+                        .sort((a, b) => a.order - b.order)
+                        .map((item: any) => (
+                            <Card
+                                key={item.id}
+                                item={item}
+                                activeId={activeCard?.id || ""}
+                                render={renderCard}
+                                classNames={classNames}
+                            />
+                        ))}
                 </SortableContext>
             </div>
         </ColumnContext.Provider>
@@ -131,44 +153,37 @@ function Column<T extends {id:string}>({
 }
 
 type PathToArray<T> = {
-    [K in keyof T]: T[K] extends any[] ? K : never
-}[keyof T] & string;
+    [K in keyof T]: T[K] extends any[] ? K : never;
+}[keyof T] &
+    string;
 
-type PathToString<T> = {
-    [K in keyof T]: T[K] extends string ? K : never
-}[keyof T] & string;
+type ItemFromField<T, K extends keyof T> = T[K] extends (infer U)[] ? U : never;
 
-type ItemFromField<T, K extends keyof T> =
-    T[K] extends (infer U)[] ? U : never;
-
-type RequiresItemWithId<T, K extends keyof T> =
-    ItemFromField<T, K> extends { id: string } ? unknown :
-        ["Error: itemsField must point to array of { id: string }"];
+type RequiresItemWithIdAndOrder<T, K extends keyof T> =
+    ItemFromField<T, K> extends { id: string; order: number }
+        ? unknown
+        : ["Error: itemsField must point to array of { id: string; order: number }"];
 
 type BoardProps<
-    TColumn,
-    TItemsField extends keyof TColumn
-> = RequiresItemWithId<TColumn, TItemsField> & {
+    TColumn extends { id: string; order: number } & Record<string, unknown>,
+    TItemsField extends PathToArray<TColumn>,
+    TNameField extends PathToString<TColumn>
+> = RequiresItemWithIdAndOrder<TColumn, TItemsField> & {
     columns: Record<string, TColumn>;
-    onUpdate: (updated: Record<string, TColumn>) => void;
+    onUpdate: (updated: BoardUpdateAction<TColumn, any>) => void;
     itemsField: TItemsField;
-    nameField: PathToString<TColumn>;
+    nameField: TNameField;
     children: (item: ItemFromField<TColumn, TItemsField>) => React.ReactNode;
     classNames?: BoardClassNames;
-    newColumnId?: string; // ← new optional prop
-    onAddNewColumn?: (card: any) => void;
-    columnOrder: string[];
-    setColumnOrder?: (order: string[]) => void;
+    newColumnDef?:NewColumnDef
 };
 
 // Compose pointer-within → closest-center
 const collisionDetection: CollisionDetection = (args) => {
-    // 1) Try high-precision pointer detection…
     const pointerCollisions = pointerWithin(args);
     if (pointerCollisions.length > 0) {
         return pointerCollisions;
     }
-    // 2) Otherwise, fall back to closest-center
     return closestCenter(args);
 };
 
@@ -180,64 +195,49 @@ type BoardClassNames = {
     overlayCard?: string;
 };
 
-export default function Board<TColumn,
-    TItemsField extends PathToArray<TColumn>>({
-                                           columns,
-                                           onUpdate,
-                                           itemsField,
-                                           nameField,
-                                           children, classNames, newColumnId="new-column-preview", onAddNewColumn, columnOrder, setColumnOrder
-                                       }: BoardProps<TColumn, TItemsField>) {
-    const {
-        dndContextProps,
-        renderColumns,
-        activeCard,
-        activeColumn,
-    } = useBoard({
-        columns,
-        onUpdate,
-        itemsField,
-        nameField,
-        onAddNewColumn,
-        columnOrder,
-        setColumnOrder
-    });
-
-    useEffect(() => {
-        if (columns) {
-            const columnKeys = Object.keys(columns);
-            const invalidKeys = columnOrder.filter((id) => !columnKeys.includes(id));
-
-            if (invalidKeys.length > 0) {
-                console.warn(
-                    `[Board] columnOrder contains unknown column keys: ${invalidKeys.join(", ")}`
-                );
-            }
+export default function Board<
+    TColumn extends { id: string; order: number } & Record<string, unknown>,
+    TItemsField extends PathToArray<TColumn>,
+    TNameField extends PathToString<TColumn>
+>({
+      columns,
+      onUpdate,
+      itemsField,
+      nameField,
+      children,
+      classNames,
+      newColumnDef
+  }: BoardProps<TColumn, TItemsField, TNameField>) {
+    const { dndContextProps, renderColumns, activeCard, activeColumn } = useBoard(
+        {
+            columns,
+            onUpdate,
+            itemsField,
+            nameField,
+            newColumnDef
         }
-    }, [columnOrder, columns]);
+    );
 
-    type TItem = (TColumn[typeof itemsField] extends (infer U)[] ? U : never) & { id: string; isPreviewColumn?: boolean };
+    type TItem = ItemFromField<TColumn, TItemsField> & {
+        id: string;
+        order: number;
+        isPreviewColumn?: boolean;
+    };
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
     );
 
-    const useNewColumn = !!onAddNewColumn;
-    const boardColumns = useNewColumn ? [...columnOrder, newColumnId] : columnOrder;
-
-    // Optionally ensure renderColumns has a placeholder for preview column
     const previewColumn = {
         [nameField]: "New",
         [itemsField]: [],
     } as unknown as TColumn;
 
-    const mergedColumns = useNewColumn
-        ? { ...renderColumns, [newColumnId]: previewColumn }
-        : renderColumns;
+    if (!columns) {
+        return <>Loading</>;
+    }
 
-    const activeColumnId = Object.keys(mergedColumns).find(
-        (id) => mergedColumns[id] === activeColumn
-    );
+    const newColumnId = newColumnDef?.id??"new-column-preview";
 
     return (
         <DndContext
@@ -245,44 +245,51 @@ export default function Board<TColumn,
             collisionDetection={collisionDetection}
             {...dndContextProps}
         >
-            <div className={cn("flex gap-6 overflow-x-auto p-4 w-fit", classNames?.board)}>
+            <div
+                className={cn("flex gap-6 overflow-x-auto p-4 w-fit", classNames?.board)}
+            >
                 <SortableContext
-                    items={boardColumns}
+                    items={Object.values(columns).sort((a,b)=>a.order-b.order).map(c => {
+                       return c.id;
+                    })}
                     strategy={horizontalListSortingStrategy}
                 >
-                    {boardColumns.map((columnId) => {
-                        const isNewColumn = columnId === newColumnId;
-                        const col = mergedColumns[columnId];
 
-                        const title = isNewColumn
-                            ? "New"
-                            : (col?.[nameField] as string) ?? "Unnamed";
+                    {[...Object.values(renderColumns), ...((!!newColumnDef)?[{
+                        ...previewColumn,
+                        id: newColumnId,
+                        order: Infinity
+                    } ]:[])]
+                        .sort((a, b) => a.order - b.order)
+                        .map((column) => {
+                            const isNewColumn = column.id === newColumnId;
+                            const title = isNewColumn
+                                ? "New"
+                                : (column[nameField] as string) ?? "Unnamed";
+                            const items = isNewColumn
+                                ? []
+                                : ((column[itemsField] as unknown) as TItem[]) ?? [];
 
-                        const items = isNewColumn
-                            ? []
-                            : (col?.[itemsField] as TItem[]) ?? [];
-
-                        return (
-                            <SortableColumn<TItem>
-                                key={columnId}
-                                id={columnId}
-                                title={title}
-                                items={items}
-                                activeCard={activeCard}
-                                renderCard={children}
-                                classNames={classNames}
-                                isPreviewColumn={columnId === newColumnId}
-                                style={{
-                                    height: "100%",
-                                    visibility:
-                                        activeColumn &&
-                                        columnId === activeColumnId
-                                            ? "hidden"
-                                            : "visible",
-                                }}
-                            />
-                        );
-                    })}
+                            return (
+                                <SortableColumn<TItem>
+                                    key={column.id}
+                                    id={column.id}
+                                    title={title}
+                                    items={items}
+                                    activeCard={activeCard}
+                                    renderCard={children}
+                                    classNames={classNames}
+                                    isPreviewColumn={isNewColumn}
+                                    style={{
+                                        height: "100%",
+                                        visibility:
+                                            activeColumn && column.id === activeColumn.id
+                                                ? "hidden"
+                                                : "visible",
+                                    }}
+                                />
+                            );
+                        })}
                 </SortableContext>
             </div>
 
@@ -296,10 +303,10 @@ export default function Board<TColumn,
                         classNames={classNames}
                     />
                 ) : activeColumn ? (
-                    <Column
+                    <Column<TItem>
                         id={newColumnId}
                         title={activeColumn[nameField] as string}
-                        items={activeColumn[itemsField] as any[]}
+                        items={(activeColumn[itemsField] as unknown) as TItem[]}
                         activeCard={activeCard}
                         renderCard={children}
                         classNames={classNames}
@@ -311,14 +318,12 @@ export default function Board<TColumn,
     );
 }
 
-function SortableColumn<T extends { id: string }>(props: ColumnProps<T> & { isPreviewColumn?: boolean }) {
-    const {
-        setNodeRef,
-        transform,
-        transition,
-        attributes,
-        listeners,
-    } = useSortable({ id: props.id, disabled: props.isPreviewColumn, });  // ← pass this in as a prop
+function SortableColumn<TItem>(props: ColumnProps<TItem> & { isPreviewColumn?: boolean }) {
+    const { setNodeRef, transform, transition, attributes, listeners } =
+        useSortable({
+            id: props.id,
+            disabled: props.isPreviewColumn,
+        });
 
     const style: CSSProperties = {
         transform: CSS.Transform.toString(transform),
@@ -331,3 +336,4 @@ function SortableColumn<T extends { id: string }>(props: ColumnProps<T> & { isPr
         </div>
     );
 }
+

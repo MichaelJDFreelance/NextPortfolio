@@ -16,5 +16,11 @@
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@svgr/cli": "^8.1.0",
+    "@svgr/core": "^8.1.0",
+    "fast-glob": "^3.3.3",
+    "react": "^19.2.0"
   }
 }

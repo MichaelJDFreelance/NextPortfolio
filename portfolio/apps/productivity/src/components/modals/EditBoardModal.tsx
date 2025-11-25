@@ -65,7 +65,7 @@ export function EditBoardModal() {
     // Initial values for form (column names)
     const form = useForm({
         defaultValues: {
-            columns: columns.map((col) => ({ id: col, name: col })),
+            columns: columns?.map((col) => ({ id: col, name: col })),
         },
         onSubmit: async ({ value }) => {
             // Handle save logic here, like updating state or sending to a backend
