@@ -5,6 +5,7 @@ export function Sidebar() {
     return (
         <div className={`sidebar`}>
             <BoardList />
+            <DarkModeSwitch />
         </div>
     );
 }

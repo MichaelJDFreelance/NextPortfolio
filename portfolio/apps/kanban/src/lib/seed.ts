@@ -4,28 +4,20 @@ import fmData from "@/data/data.json";
 export function seedYDocFromJSON(doc: Y.Doc) {
     const root = doc.getMap("kanban");
 
-    const existingBoards = root.get("boards");
-
-    const needsSeed =
-        !(existingBoards instanceof Y.Array) ||
-        existingBoards.length === 0;
-
-    if (!needsSeed) {
-        console.log("Skipping seed: boards already exist");
+    const boardsArray = root.get("boards") as Y.Array<any>;
+    if (!(boardsArray instanceof Y.Array)) {
+        console.warn("Seed called before boards array exists.");
         return;
     }
 
     console.log("Seeding YDoc from JSON...");
-
-    const boardsArray = new Y.Array<Y.Map<any>>();
-    root.set("boards", boardsArray);
 
     for (const boardJSON of fmData.boards) {
         const board = new Y.Map<any>();
         board.set("id", crypto.randomUUID());
         board.set("name", boardJSON.name);
 
-        const columnsArray = new Y.Array<Y.Map<any>>();
+        const columnsArray = new Y.Array<any>();
         board.set("columns", columnsArray);
 
         for (const colJson of boardJSON.columns) {
@@ -33,7 +25,7 @@ export function seedYDocFromJSON(doc: Y.Doc) {
             colMap.set("id", crypto.randomUUID());
             colMap.set("name", colJson.name);
 
-            const tasksArray = new Y.Array<Y.Map<any>>();
+            const tasksArray = new Y.Array<any>();
             colMap.set("tasks", tasksArray);
 
             for (const taskJson of colJson.tasks) {
@@ -42,7 +34,7 @@ export function seedYDocFromJSON(doc: Y.Doc) {
                 taskMap.set("title", taskJson.title);
                 taskMap.set("description", taskJson.description ?? "");
 
-                const subtasksArray = new Y.Array<Y.Map<any>>();
+                const subtasksArray = new Y.Array<any>();
                 taskMap.set("subtasks", subtasksArray);
 
                 for (const sub of taskJson.subtasks) {
@@ -62,3 +54,4 @@ export function seedYDocFromJSON(doc: Y.Doc) {
         boardsArray.push([board]);
     }
 }
+
