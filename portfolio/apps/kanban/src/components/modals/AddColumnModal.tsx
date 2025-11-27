@@ -4,46 +4,76 @@ import {Button} from "@/components/ui/button";
 import {useState} from "react";
 import {addColumn} from "@/lib/yjs/mutators";
 import {useStore} from "@tanstack/react-store";
-import {closeColumnModal, columnModal} from "@/lib/store/modalStore";
 import * as Y from "yjs";
+import {uiService, uiStore} from "@/lib/store/uiMachine";
+import {getBoardById} from "@/lib/yjs/accessors";
 
-export function AddColumnModal() {
-    const modalInfo = useStore(columnModal);
+export function ModalHost() {
+    const ui = useStore(uiStore);
 
-    const [newColumnName, setNewColumnName] = useState("");
+    const modal = ui.snapshot?.context.modal;
+    const payload = ui.snapshot?.context.modalPayload;
 
-    function handleConfirmAddColumn() {
-        const name = newColumnName.trim();
-        if (!name) return;
-        addColumn(modalInfo.board as Y.Map<any>, name);
-        setNewColumnName("");
-        closeColumnModal();
+    if (!modal) return null;
+
+    switch (modal) {
+        case "addColumn":
+            return <AddColumnModal payload={payload} />;
+
+        // FUTURE:
+        // case "editTask":
+        //   return <EditTaskModal payload={payload} />;
+
+        default:
+            return null;
     }
+}
 
-    const handleCancel = () => {
-        closeColumnModal();
-        setNewColumnName("");
-    }
+export function AddColumnModal({ payload }: { payload: any }) {
+    const ui = useStore(uiStore);
+
+    const boardId = payload?.boardId;  // or payload.board if you store the actual Y.Map
+    const yBoard = boardId ? getBoardById(boardId) : payload?.board;
+
+    const [name, setName] = useState("");
+
+    const close = () => {
+        uiService.send({type: "CLOSE_MODAL"});
+        setName("");
+    };
+
+    const handleConfirm = () => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+
+        // expect that payload.board or your board lookup is used
+        addColumn(yBoard as Y.Map<any>, trimmed);
+
+        close();
+    };
+
+    const isOpen = ui.snapshot?.matches({modal: "open"}) &&
+        ui.snapshot?.context.modal === "addColumn";
 
     return (
-        <Dialog open={modalInfo.open} onOpenChange={handleCancel}>
+        <Dialog open={isOpen} onOpenChange={close}>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Add new column</DialogTitle>
                 </DialogHeader>
+
                 <div className="space-y-4">
                     <Input
                         autoFocus
                         placeholder="Column name"
-                        value={newColumnName}
-                        onChange={(e) => setNewColumnName(e.target.value)}
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
                     />
                 </div>
+
                 <DialogFooter className="mt-4">
-                    <Button variant="outline" onClick={handleCancel}>
-                        Cancel
-                    </Button>
-                    <Button onClick={handleConfirmAddColumn}>Create</Button>
+                    <Button variant="outline" onClick={close}>Cancel</Button>
+                    <Button onClick={handleConfirm}>Create</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

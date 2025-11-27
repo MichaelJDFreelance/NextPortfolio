@@ -2,8 +2,8 @@
 
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
-import { seedYDocFromJSON } from "@/lib/seed";
-import {boardsReady, boardsVersion} from "@/lib/store/boardsVersion";
+import { seedYDocFromJSON_Flat } from "@/lib/seed";
+import {uiService} from "@/lib/store/uiMachine";
 
 export const doc = new Y.Doc();
 export const root = doc.getMap("kanban");
@@ -26,28 +26,17 @@ persistence.whenSynced.then(() => {
 
     let boards = root.get("boards");
 
-    let didSeed = false;
-
     if (!(boards instanceof Y.Array)) {
         boards = new Y.Array();
         root.set("boards", boards);
 
-        // 🔥 IMPORTANT: seed inside a Yjs transaction
         doc.transact(() => {
-            seedYDocFromJSON(doc);
+            seedYDocFromJSON_Flat(doc);
         });
-
-        didSeed = true;
     }
 
     _boardsArray = boards as any;
 
-    if (didSeed) {
-        // 🔥 must happen AFTER the transact() block
-        boardsVersion.setState(v => v + 1);
-    }
-
-    boardsReady.setState(true);
-
-    console.log("YJS — _boardsArray set:", (boards as any).toJSON());
+    // 🔥 NEW: notify your UI machine
+    uiService.send({ type: "YJS_READY" });
 });

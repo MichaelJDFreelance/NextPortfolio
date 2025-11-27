@@ -1,10 +1,10 @@
 "use client";
 
 import { useStore } from "@tanstack/react-store";
-import {boardsReady, boardsVersion} from "@/lib/store/boardsVersion";
 import { getBoardsArray } from "@/lib/yjs/yDoc";
 import {setBoardId} from "@/lib/store/boardStore";
 import * as Y from "yjs";
+import {uiStore} from "@/lib/store/uiMachine";
 
 function BoardListItem({ yBoard }: { yBoard: Y.Map<any> }) {// ✔ LEGAL here
     return (
@@ -18,9 +18,7 @@ function BoardListItem({ yBoard }: { yBoard: Y.Map<any> }) {// ✔ LEGAL here
 }
 
 export function BoardList() {
-    const version = useStore(boardsVersion);
-
-    const ready = useStore(boardsReady);
+    const ready = useStore(uiStore, ui=>ui.snapshot?.matches({ app: "ready" }) ?? false);
 
     if (!ready) return <p>Loading…</p>;
 

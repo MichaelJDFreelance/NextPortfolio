@@ -1,8 +1,12 @@
-import { Store } from "@tanstack/react-store";
+import { Store, Derived } from "@tanstack/react-store";
 import { getBoardById } from "@/lib/yjs/accessors";
 import * as Y from "yjs";
 
-type BoardSnapshot = {
+/* -------------------------------------------------------------------------- */
+/*                                   TYPES                                    */
+/* -------------------------------------------------------------------------- */
+
+export type BoardSnapshot = {
     name: string;
     columns: {
         id: string;
@@ -10,101 +14,198 @@ type BoardSnapshot = {
         tasks: {
             id: string;
             title: string;
-            completed: boolean;
+            description: string;
+            status: string;
             subtasks: any[];
         }[];
     }[];
 };
 
-type BoardLookup = {
+export type BoardLookup = {
     columnsById: Map<string, any>;
     tasksById: Map<string, any>;
+    tasksByColumn: Map<string, string[]>;
+    columnForTask: Map<string, string>;
 };
 
-type BoardStore = {
+type BoardStoreState = {
     id?: string;
-    CRDT?: any;
-    snapshot?: BoardSnapshot;
-    lookup?: BoardLookup;
+    CRDT?: any; // yBoard
 };
 
-export const boardStore = new Store<BoardStore | undefined>(undefined);
+/* -------------------------------------------------------------------------- */
+/*                                   STORE                                    */
+/* -------------------------------------------------------------------------- */
 
-// Build snapshot + lookup together (single pass)
-function computeBoardState(yBoard: any) {
-    const columns = yBoard.get("columns").toArray();
-    const columnsById = new Map<string, any>();
-    const tasksById = new Map<string, any>();
+export const boardStore = new Store<BoardStoreState | undefined>(undefined);
 
-    const snapshot = {
-        name: yBoard.get("name"),
-        columns: columns.map((col: any) => {
-            columnsById.set(col.get("id"), col);
+/* -------------------------------------------------------------------------- */
+/*                            DERIVED: LOOKUP (flat)                          */
+/* -------------------------------------------------------------------------- */
 
-            // 🔐 Safely get tasks as a Y.Array
-            let yTasks = col.get("tasks") as Y.Array<any> | undefined;
-            if (!(yTasks instanceof Y.Array)) {
-                // optional: repair the CRDT structure on the fly
-                yTasks = new Y.Array();
-                col.set("tasks", yTasks);
+// In lookupDerived.fn
+export const lookupDerived = new Derived<BoardLookup | undefined>({
+    deps: [boardStore],
+    fn: () => {
+        const state = boardStore.state;
+        if (!state?.CRDT) return undefined;
+
+        const yBoard = state.CRDT;
+
+        const columnsVal = yBoard.get("columns") as any;
+        const tasksVal = yBoard.get("tasks") as any;
+
+        const columnsById = new Map<string, any>();
+        const tasksById = new Map<string, any>();
+
+        // NEW
+        const tasksByColumn = new Map<string, string[]>();
+        const columnForTask = new Map<string, string>();
+
+        // --- load columns ---
+        if (columnsVal instanceof Y.Map) {
+            columnsVal.forEach((col: any, colId: string) => {
+                columnsById.set(colId, col);
+
+                // NEW: extract taskOrder for each column
+                const taskOrder = col.get("taskOrder") as Y.Array<string>;
+                if (taskOrder instanceof Y.Array) {
+                    const ids = taskOrder.toArray();
+                    tasksByColumn.set(colId, ids);
+
+                    // NEW: build reverse mapping
+                    for (const tId of ids) {
+                        columnForTask.set(tId, colId);
+                    }
+                }
+            });
+        }
+
+        // --- load tasks ---
+        if (tasksVal instanceof Y.Map) {
+            tasksVal.forEach((task: any, taskId: string) => {
+                tasksById.set(taskId, task);
+            });
+        }
+
+        return {
+            columnsById,
+            tasksById,
+
+            // NEW OUTPUT
+            tasksByColumn,
+            columnForTask,
+        };
+    },
+});
+
+
+/* -------------------------------------------------------------------------- */
+/*                   DERIVED: SNAPSHOT (rebuild old shape)                    */
+/* -------------------------------------------------------------------------- */
+
+export const snapshotDerived = new Derived<BoardSnapshot | undefined>({
+    deps: [boardStore],
+    fn: () => {
+        const state = boardStore.state;
+        if (!state?.CRDT) return undefined;
+
+        const yBoard = state.CRDT;
+        const name = yBoard.get("name") as string;
+
+        const columnsVal = yBoard.get("columns") as any;
+        const columnOrderVal = yBoard.get("columnOrder") as any;
+        const tasksVal = yBoard.get("tasks") as any;
+
+        // Require the new flattened shape for snapshot
+        if (!(columnsVal instanceof Y.Map) ||
+            !(columnOrderVal instanceof Y.Array) ||
+            !(tasksVal instanceof Y.Map)) {
+            // Old/partial shape: don't blow up the UI; just render nothing for now
+            console.warn("[snapshotDerived] Board has legacy or incomplete shape");
+            return undefined;
+        }
+
+        const columns = columnsVal as Y.Map<any>;
+        const columnOrder = columnOrderVal as Y.Array<string>;
+        const tasks = tasksVal as Y.Map<any>;
+
+        const snapshotColumns = columnOrder.toArray().map((colId) => {
+            const col = columns.get(colId);
+            if (!col) {
+                return {
+                    id: colId,
+                    name: "(missing column)",
+                    tasks: [],
+                };
             }
 
-            const tasks = yTasks.toArray();
+            const taskOrder = col.get("taskOrder") as Y.Array<string>;
+            const colName = col.get("name");
+
+            const colTasks = taskOrder.toArray().map((taskId) => {
+                const task = tasks.get(taskId);
+                if (!task) {
+                    return {
+                        id: taskId,
+                        title: "(missing task)",
+                        description: "",
+                        status: "",
+                        subtasks: [],
+                    };
+                }
+
+                const subs = task.get("subtasks") as Y.Array<any>;
+
+                return {
+                    id: task.get("id"),
+                    title: task.get("title"),
+                    description: task.get("description") ?? "",
+                    status: task.get("status") ?? "",
+                    subtasks: subs ? subs.toArray() : [],
+                };
+            });
 
             return {
-                id: col.get("id"),
-                name: col.get("name"),
-                tasks: tasks.map((task: any) => {
-                    tasksById.set(task.get("id"), task);
-
-                    // same idea for subtasks
-                    let ySubs = task.get("subtasks") as Y.Array<any> | undefined;
-                    if (!(ySubs instanceof Y.Array)) {
-                        ySubs = new Y.Array();
-                        task.set("subtasks", ySubs);
-                    }
-
-                    return {
-                        id: task.get("id"),
-                        title: task.get("title"),
-                        completed: task.get("completed"),
-                        subtasks: ySubs.toArray(),
-                    };
-                }),
+                id: colId,
+                name: colName,
+                tasks: colTasks,
             };
-        }),
-    };
+        });
 
-    return { snapshot, lookup: { columnsById, tasksById } };
-}
+        return {
+            name,
+            columns: snapshotColumns,
+        };
+    },
+});
+
+
+/* -------------------------------------------------------------------------- */
+/*                        SYNC Yjs CRDT → Store State                         */
+/* -------------------------------------------------------------------------- */
 
 let detach: (() => void) | null = null;
 
-// Called whenever ID changes OR CRDT changes
 function syncToCRDT(id: string | undefined) {
     if (!id) return;
 
     const yBoard = getBoardById(id);
     if (!yBoard) return;
 
-    const { snapshot, lookup } = computeBoardState(yBoard);
-
+    // Core state; Deriveds read from this
     boardStore.setState({
         id,
         CRDT: yBoard,
-        snapshot,
-        lookup
     });
 
+    // Rebind deep observer
     if (detach) detach();
 
     const handler = () => {
-        const { snapshot, lookup } = computeBoardState(yBoard);
         boardStore.setState({
             id,
             CRDT: yBoard,
-            snapshot,
-            lookup
         });
     };
 
@@ -112,7 +213,18 @@ function syncToCRDT(id: string | undefined) {
     detach = () => yBoard.unobserveDeep(handler);
 }
 
-// Update the ID and sync immediately
+/* -------------------------------------------------------------------------- */
+/*                                   PUBLIC API                               */
+/* -------------------------------------------------------------------------- */
+
 export const setBoardId = (id: string) => {
     syncToCRDT(id);
 };
+
+/* -------------------------------------------------------------------------- */
+/*                       IMPORTANT: MOUNT DERIVED STORES                       */
+/* -------------------------------------------------------------------------- */
+
+// You must mount Deriveds so they react to deps.
+lookupDerived.mount();
+snapshotDerived.mount();
