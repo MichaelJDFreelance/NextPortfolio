@@ -4,9 +4,22 @@ import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import { seedYDocFromJSON_Flat } from "@/lib/seed";
 import {uiService} from "@/lib/store/uiMachine";
+import {WebsocketProvider} from "y-websocket";
 
 export const doc = new Y.Doc();
 export const root = doc.getMap("kanban");
+
+const provider = new WebsocketProvider(
+    "ws://127.0.0.1:9000",
+    "my-room",
+    doc
+)
+
+provider.on("status", (event:any) => {
+    console.log("WS Status:", event.status);
+});
+
+const awareness = provider.awareness
 
 let _boardsArray: Y.Array<any> | null = null;
 

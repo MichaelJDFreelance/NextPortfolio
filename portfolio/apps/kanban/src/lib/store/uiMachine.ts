@@ -1,10 +1,10 @@
-import {createActor, createMachine, setup, SnapshotFrom, assign} from "xstate";
+import {createActor, setup, SnapshotFrom, assign} from "xstate";
 import {Store} from "@tanstack/react-store";
+import {boardStore, lookupDerived} from "@/lib/store/boardStore";
+import {handleDragOverStable} from "@/lib/ui/handleDragOverStable";
 import {moveColumn, moveTask} from "@/lib/yjs/mutators";
-import {boardStore} from "@/lib/store/boardStore";
-import {lookupDerived} from "@/lib/store/boardStore";
 
-import type { DragEndEvent } from "@dnd-kit/core";
+type DragEndEvent = any
 
 type DropTaskEvent = {
     type: "DROP_TASK";
@@ -61,7 +61,8 @@ type UIEvents =
     | { type: "CANCEL_DRAG" }
     // Modal events:
     | { type: "OPEN_MODAL"; modal: ModalType; payload?: ModalPayload }
-    | { type: "CLOSE_MODAL" };
+    | { type: "CLOSE_MODAL" }
+    | { type: "DRAG_OVER", event: any };
 
 
 /* ──────────────────────────────────────────────
@@ -74,6 +75,81 @@ interface UIContext {
 
     // Existing UI context fields:
     dragActive: boolean;
+}
+
+export function computeProjectedColumns(
+    prevShadow: Record<string, string[]>,
+    lookup: any,
+    activeId: string,
+    overId: string | null,
+    toColumn: string | null
+): Record<string, string[]> {
+
+    if (!overId || !toColumn) return prevShadow;
+
+    // 1. Establish baseline from prevShadow or lookup
+    const base = Object.keys(prevShadow).length > 0
+        ? prevShadow
+        : Object.fromEntries(
+            [...lookup.tasksByColumn].map(([colId, ids]) => [
+                colId,
+                [...ids], // clone ONCE
+            ])
+        );
+
+    // 2. Find old column
+    const fromColumn = Object.keys(base).find(colId =>
+        base[colId].includes(activeId)
+    );
+
+    if (!fromColumn) return base;
+
+    // 3. Clean next reference (shallow clone)
+    const next = base === prevShadow ? { ...base } : base;
+
+    // 4. REMOVE activeId from all columns (prevents duplicates 100%)
+    for (const colId of Object.keys(next)) {
+        const list = next[colId];
+        if (list.includes(activeId)) {
+            next[colId] = list.filter((id:any) => id !== activeId);
+        }
+    }
+
+    // 5. Target list (may not exist yet)
+    const targetList = next[toColumn] ?? [];
+
+    // 6. Compute clean insertion index
+    const overIndex = targetList.indexOf(overId);
+    const insertIndex = overIndex === -1 ? targetList.length : overIndex;
+
+    // 7. Insert exactly once
+    const newTarget = [...targetList];
+    newTarget.splice(insertIndex, 0, activeId);
+
+    next[toColumn] = newTarget;
+
+    return next;
+}
+
+export function moveColumnById(
+    yBoard: any,
+    columnId: string,
+    overColumnId: string,
+    edge: "left" | "right",
+) {
+    console.log("moveColumnById", columnId, overColumnId, edge)
+    const columnOrder = yBoard.get("columnOrder") as any;
+
+    const arr = columnOrder.toArray();
+
+    const fromIndex = arr.indexOf(columnId);
+    const overIndex = arr.indexOf(overColumnId);
+
+    if (fromIndex === -1 || overIndex === -1) return;
+
+    const toIndex = edge === "left" ? overIndex : overIndex + 1;
+
+    moveColumn(yBoard, fromIndex, toIndex)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -107,41 +183,37 @@ export const uiMachine = setup({
 
         // ⭐ NEW: Handle task drop
         handleTaskDrop: ({ event, context }) => {
-            const { active, over } = event.event;
-            if (!active || !over) return;
+            console.log("handleTaskDrop", event, context)
+            if (event.type !== "DROP_TASK") return;
 
-            const a = active.data?.current;
-            const o = over.data?.current;
-            if (!a || !o) return;
-
-            // You stored the Yjs board in TanStack store, not XState context
-            // So access it from a helper (boardStore.state?.CRDT)
-            const yBoard = boardStore.state?.CRDT;
+            const yBoard = boardStore.state?.CRDT
             if (!yBoard) return;
 
-            moveTask(
-                yBoard,
-                a.taskId,
-                a.columnId,
-                o.columnId,
-                o.index
-            );
+            const {taskId, fromColumnId, toColumnId, index } = event.event;
+
+            moveTask(yBoard, taskId, fromColumnId, toColumnId, index)
+        },
+
+        handleDragOver: ({ event }) => {
+            if (event.type !== "DRAG_OVER") return;
+
+            handleDragOverStable(event.event, lookupDerived.state);
         },
 
         // ⭐ NEW: Handle column drop
         handleColumnDrop: ({ event }) => {
-            const { active, over } = event.event;
-            if (!active || !over) return;
+            console.log("handleColumnDrop", event)
 
-            const fromIndex = active.data.current?.index;
-            const toIndex = over.data.current?.index;
+            if (event.type !== "DROP_COLUMN") return;
 
-            if (fromIndex === undefined || toIndex === undefined) return;
-
-            const yBoard = boardStore.state?.CRDT;
+            const yBoard = boardStore.state?.CRDT
             if (!yBoard) return;
 
-            moveColumn(yBoard, fromIndex, toIndex);
+            const { columnId, overColumnId, edge } = event.event;
+
+            console.log("event.event", event.event)
+
+            moveColumnById(yBoard, columnId, overColumnId, edge)
         },
     },
 
@@ -191,6 +263,10 @@ export const uiMachine = setup({
 
                 dragging: {
                     on: {
+                        DRAG_OVER: {
+                            target: "dragging",
+                            actions: "handleDragOver",
+                        },
                         DROP_TASK: {
                             target: "idle",
                             actions: ["handleTaskDrop", "endDrag"],

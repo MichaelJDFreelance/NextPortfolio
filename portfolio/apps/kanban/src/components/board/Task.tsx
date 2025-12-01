@@ -2,8 +2,10 @@
 
 import { useStore } from "@tanstack/react-store";
 import { boardStore, snapshotDerived, lookupDerived } from "@/lib/store/boardStore";
-import { CSS } from "@dnd-kit/utilities";
-import { useSortable } from "@dnd-kit/sortable";
+import {DropIndicator} from "@atlaskit/pragmatic-drag-and-drop-react-drop-indicator/box";
+import {createPortal} from "react-dom";
+import {useTaskDnd} from "@/components/genericBoard/useKanbanColumn";
+import {uiService} from "@/lib/store/uiMachine";
 
 type TaskProps = {
     id: string;
@@ -11,7 +13,7 @@ type TaskProps = {
     index: number;
 };
 
-export function Task({ id, columnId, index }: TaskProps) {
+export function Task({ id, columnId }: TaskProps) {
     // 1. Core board state (only { id, CRDT })
     const core = useStore(boardStore);
 
@@ -19,29 +21,10 @@ export function Task({ id, columnId, index }: TaskProps) {
     const snapshot = useStore(snapshotDerived);
     const lookup = useStore(lookupDerived);
 
+    const { ref, closestEdge, state } = useTaskDnd(id, columnId,
+        ()=>uiService.send({type:"START_DRAG", event:{}}));
+
     const yBoard = core?.CRDT;
-
-    /* ──────────────────────────────────────────────
-     *  MAKE TASK SORTABLE
-     * ────────────────────────────────────────────── */
-    const sortableId = `${id}`;
-
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-        isDragging
-    } = useSortable({
-        id: sortableId,
-        data: {
-            type: "task",
-            taskId: id,
-            columnId,
-            index,
-        },
-    });
 
     if (!core || !yBoard) return null;
 
@@ -62,23 +45,41 @@ export function Task({ id, columnId, index }: TaskProps) {
 
     const completedCount = taskSnap.subtasks.filter((s) => s.completed).length;
 
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-    };
-
     return (
-        <div
-            ref={setNodeRef}
-            style={style}
-            className="flex flex-col py-5 px-4 gap-2 bg-white rounded shadow cursor-grab active:cursor-grabbing"
-            {...attributes}
-            {...listeners}
-        >
-            <h2 className="text-preset-heading-m">{taskSnap.title}</h2>
-            <span>
-                {completedCount} of {taskSnap.subtasks.length} subtasks
-            </span>
-        </div>
+        <>
+            <div
+                ref={ref}
+                data-task-id={id}
+                data-column-id={columnId}
+                className={`relative`}
+            >
+                <h2 className="text-preset-heading-m">{taskSnap.title}</h2>
+                <span>
+                    {completedCount} of {taskSnap.subtasks.length} subtasks
+                        {closestEdge && (
+                            <DropIndicator edge={closestEdge} />
+                        )}
+                </span>
+            </div>
+
+            {state.type === "preview" &&
+                createPortal(
+                    <div
+                        style={{
+                            boxSizing: "border-box",
+                            width: state.rect.width,
+                            height: state.rect.height,
+                        }}
+                    >
+                        <div>
+                            <h2 className="text-preset-heading-m">{taskSnap.title}</h2>
+                            <span>
+                    {completedCount} of {taskSnap.subtasks.length} subtasks
+                </span>
+                        </div>
+                    </div>,
+                    state.container
+                )}
+        </>
     );
 }

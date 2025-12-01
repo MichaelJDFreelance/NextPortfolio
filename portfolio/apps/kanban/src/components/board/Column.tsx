@@ -1,41 +1,39 @@
 "use client";
 
 import { useStore } from "@tanstack/react-store";
-import {
-    boardStore,
-    snapshotDerived,
-    lookupDerived,
-} from "@/lib/store/boardStore";
-import {
-    SortableContext,
-    useSortable,
-    verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { boardStore, snapshotDerived, lookupDerived, } from "@/lib/store/boardStore";
 import { Task } from "@/components/board/Task";
+import {dndStore} from "@/lib/store/dndStore";
+import {useRef} from "react";
+import {useColumnDnd, useTaskDropTarget} from "@/components/genericBoard/useKanbanColumn";
+import {uiService} from "@/lib/store/uiMachine";
+import {DropIndicator} from "@atlaskit/pragmatic-drag-and-drop-react-drop-indicator/box";
 
 type ColumnProps = { id: string; index: number };
 
 export function Column({ id, index }: ColumnProps) {
     // Core board state
     const core = useStore(boardStore);
+    const shadow = useStore(dndStore, s=>s.shadowColumns)
+
+    const columnRef = useRef<HTMLDivElement>(null);
+    const headerRef = useRef<HTMLDivElement>(null);
+    const tasksRef = useRef<HTMLDivElement>(null);
+
+    const { closestEdge } = useColumnDnd(
+        id,
+        columnRef,
+        headerRef,
+        (payload)=>uiService.send({type:"DROP_COLUMN", event:payload}),
+        ()=>uiService.send({type:"START_DRAG", event:{}})
+    );
+
+    useTaskDropTarget(id, tasksRef, (payload)=>uiService.send({type:"DROP_TASK", event:payload}))
 
 
     // Derived snapshot + lookup
     const snapshot = useStore(snapshotDerived);
     const lookup = useStore(lookupDerived);
-
-    /* ──────────────────────────────────────────────
-     * MAKE COLUMN SORTABLE
-     * ────────────────────────────────────────────── */
-    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-        id, // MUST remain pure ID
-        data: {
-            type: "column",
-            columnId: id,
-            index,
-        },
-    });
 
     if (!core) return null;
 
@@ -49,39 +47,32 @@ export function Column({ id, index }: ColumnProps) {
     const yColumn = lookup.columnsById.get(id);
     if (!yColumn) return null;
 
-    const taskIds = colSnap.tasks.map((t) => t.id);
-
-
-
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-    };
-
-    /* IMPORTANT FIX:
-     * SortableContext.items MUST be pure IDs
-     * to match useSortable({ id: taskId })
-     */
-    const sortableTaskIds = taskIds;
+    //const taskIds = colSnap.tasks.map((t) => t.id);
+    const hasProjection = shadow && Object.keys(shadow).length > 0;
+    const taskIds = hasProjection
+        ? shadow[id] ?? []     // projection order
+        : colSnap.tasks.map(t => t.id) // real order
 
     return (
         <div
-            ref={setNodeRef}
-            style={style}
+            ref={columnRef}
             className="flex flex-col gap-4 min-w-[280px]"
-            {...attributes}
-            {...listeners}
         >
-            <h2>{colSnap.name}</h2>
+            <h2 ref={headerRef}>{colSnap.name}</h2>
 
-            {/* TASK LIST SORTABLE CONTEXT */}
-            <SortableContext items={sortableTaskIds} strategy={verticalListSortingStrategy}>
-                <div className="tasks flex flex-col gap-5">
-                    {colSnap.tasks.map((t, idx) => (
-                        <Task key={t.id} id={t.id} index={idx} columnId={id} />
+                <div className="tasks flex flex-col gap-5 relative"
+                     ref={tasksRef}
+                     data-type="kanban-task-container"
+                     data-column={id}>
+                    {taskIds.map((taskId, idx) => (
+                        <Task key={taskId} id={taskId} index={idx} columnId={id} />
                     ))}
+                    {/* Atlassian-like indicator */}
+                    {closestEdge && (
+                        <DropIndicator edge={closestEdge} gap="8px" />
+                    )}
                 </div>
-            </SortableContext>
+
         </div>
     );
 }

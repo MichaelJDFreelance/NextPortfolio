@@ -1,0 +1,69 @@
+### ---------------------------------------------------------
+### 1. Missing filters (should return 400 error)
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 2. Fuzzy search: matches “York”
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?q=York
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 3. Timezone filter
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?tz=Europe/London
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 4. Minimum population filter
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?min_pop=1000000
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 5. Combined fuzzy + min_pop filter
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?q=San&min_pop=500000
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 6. Sorted by population descending
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?q=an&sort=pop&order=desc
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 7. Pagination test (limit + offset)
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?q=a&limit=5&offset=5
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 8. Multiple filters (name, tz, pop)
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?q=burg&tz=Europe/Berlin&min_pop=100000
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 9. Invalid sort key (should still work but return unsorted list)
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?q=York&sort=INVALID
+Accept: application/json
+
+
+### ---------------------------------------------------------
+### 10. Rate limit test (10 requests per minute)
+###     Run this block repeatedly to trigger 429
+### ---------------------------------------------------------
+GET http://127.0.0.1:8001/cities?q=London
+Accept: application/json
