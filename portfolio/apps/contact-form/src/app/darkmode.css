@@ -1,0 +1,13 @@
+@variant dark-theme {
+    /* System preference branch */
+    @media (prefers-color-scheme: dark) {
+        .group:not([data-light-selected=true]) & {
+            @slot;
+        }
+    }
+
+    /* JS / user override branch */
+    .group[data-light-selected=false] & {
+        @slot;
+    }
+}

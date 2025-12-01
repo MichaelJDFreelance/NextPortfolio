@@ -1,0 +1,10 @@
+{
+  "name": "ws-server",
+  "private": true,
+  "devDependencies": {
+
+  },
+  "scripts": {
+    "start": "y-websocket"
+  }
+}
