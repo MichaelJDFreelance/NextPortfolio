@@ -1,7 +1,7 @@
 import {createActor, setup, SnapshotFrom, assign} from "xstate";
 import {Store} from "@tanstack/react-store";
 import {boardStore, lookupDerived} from "@/lib/store/boardStore";
-import {handleDragOverStable} from "@/lib/ui/handleDragOverStable";
+//import {handleDragOverStable} from "@/lib/ui/handleDragOverStable";
 import {moveColumn, moveTask} from "@/lib/yjs/mutators";
 
 type DragEndEvent = any
@@ -197,7 +197,7 @@ export const uiMachine = setup({
         handleDragOver: ({ event }) => {
             if (event.type !== "DRAG_OVER") return;
 
-            handleDragOverStable(event.event, lookupDerived.state);
+            //handleDragOverStable(event.event, lookupDerived.state);
         },
 
         // ⭐ NEW: Handle column drop

@@ -52,13 +52,6 @@ export function useTaskDropTarget(
 
                 const draggedId = source.data.taskId;
 
-                /*const draggedIndex = taskNodes.findIndex(
-                    (t) => t.dataset.taskId === draggedId
-                );
-
-                console.log("source.data", source.data);
-                console.log("taskNode Ids", taskNodes.map((t) => t.dataset.taskId));
-*/
                 // Find task under pointer
                 const targetEntry = (location.current?.dropTargets ?? []).find(
                     (t) =>
@@ -86,15 +79,6 @@ export function useTaskDropTarget(
                     else {
                         index = targetIndex + 1;
                     }
-
-                    /*index = getReorderDestinationIndex({
-                        startIndex: draggedIndex,
-                        indexOfTarget: targetIndex,
-                        closestEdgeOfTarget: closestEdge,
-                        axis: "vertical",
-                    });
-
-                    console.log("index", draggedIndex, targetIndex, closestEdge);*/
                 }
 
                 onTaskDrop({
@@ -376,4 +360,6 @@ export function useColumnHoverMonitor(dataType: string) {
 
     return { columnHoverId, containerRef };
 }
+
+
 

@@ -3,7 +3,7 @@
 import { useStore } from "@tanstack/react-store";
 import { boardStore, snapshotDerived, lookupDerived, } from "@/lib/store/boardStore";
 import { Task } from "@/components/board/Task";
-import {dndStore} from "@/lib/store/dndStore";
+//import {dndStore} from "@/lib/store/dndStore";
 import {useRef} from "react";
 import {useColumnDnd, useTaskDropTarget} from "@/components/genericBoard/useKanbanColumn";
 import {uiService} from "@/lib/store/uiMachine";
@@ -14,7 +14,7 @@ type ColumnProps = { id: string; index: number };
 export function Column({ id, index }: ColumnProps) {
     // Core board state
     const core = useStore(boardStore);
-    const shadow = useStore(dndStore, s=>s.shadowColumns)
+    //const shadow = useStore(dndStore, s=>s.shadowColumns)
 
     const columnRef = useRef<HTMLDivElement>(null);
     const headerRef = useRef<HTMLDivElement>(null);
@@ -48,10 +48,12 @@ export function Column({ id, index }: ColumnProps) {
     if (!yColumn) return null;
 
     //const taskIds = colSnap.tasks.map((t) => t.id);
-    const hasProjection = shadow && Object.keys(shadow).length > 0;
-    const taskIds = hasProjection
+    //const hasProjection = shadow && Object.keys(shadow).length > 0;
+    const taskIds =
+        /*hasProjection
         ? shadow[id] ?? []     // projection order
-        : colSnap.tasks.map(t => t.id) // real order
+        : */
+        colSnap.tasks.map(t => t.id) // real order
 
     return (
         <div
