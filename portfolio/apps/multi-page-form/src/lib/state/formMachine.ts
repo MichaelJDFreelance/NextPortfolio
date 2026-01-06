@@ -1,11 +1,17 @@
 import {
     createActor,
-    fromPromise,
     setup,
     assign,
     SnapshotFrom,
 } from "xstate";
 import {Store} from "@tanstack/react-store";
+import {personalInfoSchema, planSchema} from "../../../db/validators";
+import {
+    loadSubmission,
+    saveAddOns,
+    savePersonalInfo,
+    savePlan
+} from "@/lib/state/api";
 
 type FormContext = {
     personalInfo: {
@@ -24,7 +30,7 @@ type FormContext = {
     }
 };
 
-type Stage = "personalInfo" | "plan" | "addOns" | "summary";
+export type Stage = "personalInfo" | "plan" | "addOns" | "summary";
 
 type FormEvent =  | {
     type: "UPDATE_PERSONAL_INFO";
@@ -39,39 +45,39 @@ type FormEvent =  | {
     type: "FINISH";
 } | { type: "GO_TO_STAGE"; stage: Stage };
 
-type LoadedSubmission = {
-    personalInfo: {
-        name: string;
-        email: string;
-        phone: string;
-    };
-    plan: {
-        type: string;
-        yearly: boolean;
-    };
-    addOns: {
-        online: boolean;
-        largerStorage: boolean;
-        customProfile: boolean;
-    };
-};
-
-const submissionIdStore = new Store<number | null>(null);
-
 const orderedFormStages = [
     {
-        target: "#signup.summary", guard: "shouldProceedToSummary",
+        target: "#signup.summary", guard: { type: "canTransitionTo", params: { target: "summary" } },
     },
     {
-        target: "#signup.addOns", guard: "shouldProceedToAddOns",
+        target: "#signup.addOns", guard: { type: "canTransitionTo", params: { target: "addOns" } },
     },
     {
-        target: "#signup.plan", guard: "shouldProceedToPlan",
+        target: "#signup.plan", guard: { type: "canTransitionTo", params: { target: "plan" } },
     },
     {
-        target: "#signup.personalInfo", guard: "shouldProceedToPersonalInfo",
+        target: "#signup.personalInfo", guard: { type: "canTransitionTo", params: { target: "personalInfo" } },
     },
 ]  as const;
+
+export function isReadyFor(stage: Stage, context: FormContext): boolean {
+    switch (stage) {
+        case "personalInfo":
+            return true;
+        case "plan":
+            return personalInfoSchema.safeParse(context.personalInfo).success;
+        case "addOns":
+            return planSchema.safeParse(context.plan).success && isReadyFor("plan", context);
+        default:
+            return false;
+    }
+}
+
+export function shouldProceedTo(stage: Stage, context: FormContext, event: FormEvent): boolean {
+    const userHasNotSpecifiedADestination = event.type!=="GO_TO_STAGE";
+    const userExplicitlyWantsToGoToStage = event.type==="GO_TO_STAGE" && event.stage === stage;
+    return (userHasNotSpecifiedADestination || userExplicitlyWantsToGoToStage) && isReadyFor(stage, context);
+}
 
 export const formMachine = setup({
     types: {
@@ -79,68 +85,7 @@ export const formMachine = setup({
         events: {} as FormEvent,
     },
 
-    actors: {
-        savePersonalInfo: fromPromise<unknown, { values: FormContext["personalInfo"] }>(
-            async ({input}) => {
-            const {values} = input;
-
-            const submissionId = submissionIdStore.state;
-
-            const response = await fetch("/api/personal-info", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({values, submissionId}),
-            });
-
-            if (!response.ok) {
-                throw new Error("Failed to save");
-            }
-
-            const json = await response.json();
-
-            submissionIdStore.setState(json.submissionId);
-
-            return json;
-        }),
-
-        savePlan: fromPromise<unknown, { values: FormContext["plan"] }>(
-            async ({input}) => {
-                const response = await fetch("/api/plan", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(input.values),
-                });
-
-                if (!response.ok) {
-                    throw new Error("Failed to save");
-                }
-
-                return response.json();
-            }),
-
-        saveAddOns: fromPromise<unknown, { values: FormContext["addOns"] }>(
-            async ({input}) => {
-                const response = await fetch("/api/add-ons", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(input.values),
-                });
-
-                if (!response.ok) {
-                    throw new Error("Failed to save");
-                }
-
-                return response.json();
-            }),
-
-        loadSubmission: fromPromise<LoadedSubmission>(async () => {
-            return {
-                personalInfo: { name: "", email: "", phone: "" },
-                plan: { type: "", yearly: false },
-                addOns: { online: false, largerStorage: false, customProfile: false },
-            };
-        }),
-    },
+    actors: { savePersonalInfo, savePlan, saveAddOns, loadSubmission, },
 
     actions: {
         cachePersonalInfo: assign(({event}) => {
@@ -161,32 +106,8 @@ export const formMachine = setup({
     },
 
     guards: {
-        shouldProceedToPersonalInfo: ({ event }) => {
-            const userHasNotSpecifiedADestination = event.type!=="GO_TO_STAGE";
-            const userExplicitlyWantsToGoToPlan = event.type==="GO_TO_STAGE" && event.stage === "personalInfo";
-            return (userHasNotSpecifiedADestination || userExplicitlyWantsToGoToPlan)
-        },
-
-        shouldProceedToPlan: ({ context, event }) => {
-            const userHasNotSpecifiedADestination = event.type!=="GO_TO_STAGE";
-            const userExplicitlyWantsToGoToPlan = event.type==="GO_TO_STAGE" && event.stage === "plan";
-            const userIsReadyToProceedToPlan = context.personalInfo.name !== "" &&
-                context.personalInfo.email !== "";
-            return (userHasNotSpecifiedADestination || userExplicitlyWantsToGoToPlan) && userIsReadyToProceedToPlan
-        },
-
-        shouldProceedToAddOns: ({ context, event }) => {
-            const userHasNotSpecifiedADestination = event.type!=="GO_TO_STAGE";
-            const userExplicitlyWantsToGoToAddOns = event.type==="GO_TO_STAGE" && event.stage === "addOns";
-            const userIsReadyToProceedToAddOns = context.plan.type !== "";
-            return (userHasNotSpecifiedADestination || userExplicitlyWantsToGoToAddOns) && userIsReadyToProceedToAddOns
-        },
-
-        shouldProceedToSummary: ({ context, event }) => {
-            const userHasNotSpecifiedADestination = event.type!=="GO_TO_STAGE";
-            const userExplicitlyWantsToGoToSummary = event.type==="GO_TO_STAGE" && event.stage === "summary";
-            const userIsReadyToProceedToSummary = Object.values(context.addOns).some(Boolean);
-            return (userHasNotSpecifiedADestination || userExplicitlyWantsToGoToSummary) && userIsReadyToProceedToSummary
+        canTransitionTo: ({ context, event }, params: { target: Stage }) => {
+            return shouldProceedTo(params.target, context, event);
         },
     },
 }).createMachine({

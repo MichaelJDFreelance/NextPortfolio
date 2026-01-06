@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "./client";
 import {personalInfo, plans, addOns, formSubmissions} from "./schema";
+import {eq} from "drizzle-orm";
 
 export async function saveSubmissionId(
 ) {
@@ -27,6 +28,12 @@ export async function savePersonalInfo(
         });
 }
 
+export async function getPersonalInfo(submissionId: number) {
+    const result = await db.select().from(personalInfo)
+        .where(eq(personalInfo.submissionId, submissionId));
+    return result[0];
+}
+
 export async function savePlan(
     submissionId: number,
     values: {
@@ -41,6 +48,12 @@ export async function savePlan(
             target: [plans.submissionId],
             set: values,
         });
+}
+
+export async function getPlan(submissionId: number) {
+    const result = await db.select().from(plans)
+        .where(eq(plans.submissionId, submissionId));
+    return result[0];
 }
 
 export async function saveAddOns(
@@ -58,4 +71,10 @@ export async function saveAddOns(
             target: [addOns.submissionId],
             set: values,
         });
+}
+
+export async function getAddOns(submissionId: number) {
+    const result = await db.select().from(addOns)
+        .where(eq(addOns.submissionId, submissionId));
+    return result[0];
 }
